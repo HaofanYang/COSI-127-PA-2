@@ -5,6 +5,23 @@ import csv
 import os
 import sqlite3
 
+# Index of corresponding information in each row in the CSV file
+P_NAME = 0 # Patron name
+P_CN = 1 # Patron card number
+P_JY = 2 # Patron join year
+P_PN = 3 # Patron phone number
+B_BC = 4 # Book bar code
+B_TITLE = 5 # Book title
+B_YEAR = 6 # Book year
+B_AUTHOR = 7 # Book Author
+A_BIRTHY = 8 # Author birth year
+P_NAME = 9 # Publisher name
+P_PHONE = 10 # Publisher phone
+CKO_DATE = 11 # Checkout date
+DUE_DATE = 12 # Due date
+RETURNED = 13 # Returned
+
+
 def create_table_commands():
     # Create tables shown in the ER diagram
     fd = open('create_tables.sql', 'r')
@@ -12,10 +29,11 @@ def create_table_commands():
     fd.close()
     return sql.split(';')
 
+
 def load_data():
     # This function should:
     # 1) create a new database file called "library.db"
-    # 2) create appropiate tables
+    # 2) create appropriate tables
     # 3) read the data.csv file and insert data into your database
     if os.path.exists("library.db"):
         os.remove("library.db")
@@ -23,38 +41,69 @@ def load_data():
     curr = conn.cursor()
     curr.execute("PRAGMA foreign_keys = ON;")
 
+    # Create tables. Please refer to create_tables.sql for more details
     for command in create_table_commands():
         curr.execute(command)
     conn.commit()
 
-    # Hash set of patron card numbers that have been added to the PATRON table, initialized to an empty set
-    patron_added = set()
-    book_added = set()
-
     with open("data.csv") as f:
         reader = csv.reader(f)
-        next(reader) # throw out the header row
+        next(reader)  # throw out the header row
         for row in reader:
-            # pfn, pln: First and last name of a patron
-            pfn, pln, pcn, py, pphone = row[0].split()[0], row[0].split()[1], row[1], row[2], row[3]
-            bc, title, year = row[4], row[5], int(row[6])
-            if not pcn in patron_added:
-                patron_added.add(pcn)
-                curr.execute("INSERT INTO patron VALUES(?, ?, ?, ?, ?)",
-                         (pfn, pln, pcn, py, pphone))
-            if not bc in book_added:
-                book_added.add(bc)
-                curr.execute("INSERT INTO book VALUES(?,?,?)",
-                         (bc, title, year))
-        conn.commit()
+            # Check if a patron card number has been added
+            not_exist = curr.execute("SELECT * FROM patron WHERE card_number = ?", (row[P_CN],)).fetchone() is None
+            if not_exist:
+                curr.execute("INSERT INTO patron VALUES(?,?,?,?)",
+                             (row[P_CN], row[P_NAME], row[P_JY], row[P_PHONE]))
+
+            # Check if an author name has been added
+            not_exist = curr.execute("SELECT * FROM author WHERE name = ?", (row[B_AUTHOR],)).fetchone() is None
+            if not_exist:
+                curr.execute("INSERT INTO author VALUES(?,?)", (row[B_AUTHOR], row[A_BIRTHY]))
+
+            # Check if a publisher name has been added
+            not_exist = curr.execute("SELECT * FROM publisher WHERE name = ?", (row[P_NAME],)).fetchone() is None
+            if not_exist:
+                curr.execute("INSERT INTO publisher VALUES(?,?)", (row[P_NAME], row[P_PHONE]))
+
+            # Check if a book barcode has been added
+            not_exist = curr.execute("SELECT * FROM book WHERE barcode = ?", (row[B_BC],)).fetchone() is None
+            if not_exist:
+                curr.execute("INSERT INTO book VALUES(?,?,?,?,?)",
+                             (row[B_BC], row[B_TITLE], row[B_YEAR], row[B_AUTHOR], row[P_NAME]))
+
+            # When adding rental records, I assumed there is NO invalid rental record in the original .csv file
+            # An invalid rental record can be, for example, a book was checked out when it wasn't returned back
+            curr.execute("INSERT INTO checkout VALUES(null,?,?,?,?,?)",
+                         (row[B_BC], row[P_CN], row[CKO_DATE], row[DUE_DATE], row[RETURNED]))
+
+    conn.commit()
+    curr.close()
     conn.close()
+
 
 def overdue_books(date_str):
     # This function should take in a string like YYYY-MM-DD and print out
     # a report of all books that are overdue as of that date, and the
     # patrons who still have them.
+    conn = sqlite3.connect("library.db")
+    curr = conn.cursor()
+    match = curr.execute("""
+                    SELECT B.name, C.title, A.due_date 
+                    FROM checkout AS A
+                    JOIN patron AS B ON B.card_number = A.patron_id
+                    JOIN book AS C ON C.barcode = A.book_id
+                    WHERE A.due_date <= julianday(?) AND A.returned = 0
+                 """, (date_str,)).fetchall()
+    if len(match) > 0:
+        print("All overdue books:")
+        for row in match:
+            print("Patron: {}, Book: {}, Due_date: {}".format(row[0], row[1], row[2]))
+    else:
+        print("There is no book overdue.")
+    curr.close()
+    conn.close()
 
-    pass # delete this when you write your code
 
 def most_popular_books():
     # This function should print out a report of which books are the
@@ -62,6 +111,7 @@ def most_popular_books():
     # the books themselves, not who published them.
 
     pass # delete this when you write your code
+
 
 def note_return(patron_card, book_barcode):
     # This function should update the database to indicate that the patron
@@ -71,6 +121,7 @@ def note_return(patron_card, book_barcode):
 
     pass # delete this when you write your code
 
+
 def note_checkout(patron_card, book_barcode, checkout_date):
     # This function should update the database to indicate that a patron
     # has checked out a book on the passed date. The due date of the book
@@ -78,6 +129,7 @@ def note_checkout(patron_card, book_barcode, checkout_date):
     # out an error if the book is currently checked out.
 
     pass # delete this when you write your code
+
 
 def replacement_report(book_barcode):
     # This function will be used by the library when a book has been lost
@@ -87,11 +139,13 @@ def replacement_report(book_barcode):
     
     pass # delete this when you write your code
 
+
 def inventory():
     # This function should report the library's inventory, the books currently
     # available (not checked out).
 
     pass # delete this when you write your code
+
 
 # this is the entry point to a Python program, like `public static void main`
 # in Java.

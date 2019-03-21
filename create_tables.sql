@@ -9,25 +9,23 @@ CREATE TABLE book (
     barcode TEXT PRIMARY KEY,
     title TEXT,
     year INTEGER,
-    author_id INTEGER REFERENCES author(id)
-    publisher_id INTEGER REFERENCES publisher(id)
+    author INTEGER REFERENCES author(name),
+    publisher INTEGER REFERENCES publisher(name)
 );
 
 CREATE TABLE author (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
+    name TEXT PRIMARY KEY,
     birth_year INTEGER
 );
 
 CREATE TABLE publisher (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
+    name TEXT PRIMARY KEY,
     phone TEXT
 );
 
 CREATE TABLE checkout (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    book_id TEXT REFERENCES publisher(barcode),
+    book_id TEXT REFERENCES book(barcode),
     patron_id TEXT REFERENCES patron(card_number),
     checkout_date REAL,
     due_date REAL,
