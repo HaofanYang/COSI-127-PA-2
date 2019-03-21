@@ -15,8 +15,8 @@ B_TITLE = 5 # Book title
 B_YEAR = 6 # Book year
 B_AUTHOR = 7 # Book Author
 A_BIRTHY = 8 # Author birth year
-P_NAME = 9 # Publisher name
-P_PHONE = 10 # Publisher phone
+PUB_NAME = 9 # Publisher name
+PUB_PHONE = 10 # Publisher phone
 CKO_DATE = 11 # Checkout date
 DUE_DATE = 12 # Due date
 RETURNED = 13 # Returned
@@ -54,7 +54,7 @@ def load_data():
             not_exist = curr.execute("SELECT * FROM patron WHERE card_number = ?", (row[P_CN],)).fetchone() is None
             if not_exist:
                 curr.execute("INSERT INTO patron VALUES(?,?,?,?)",
-                             (row[P_CN], row[P_NAME], row[P_JY], row[P_PHONE]))
+                             (row[P_CN], row[P_NAME], row[P_JY], row[P_PN]))
 
             # Check if an author name has been added
             not_exist = curr.execute("SELECT * FROM author WHERE name = ?", (row[B_AUTHOR],)).fetchone() is None
@@ -62,15 +62,15 @@ def load_data():
                 curr.execute("INSERT INTO author VALUES(?,?)", (row[B_AUTHOR], row[A_BIRTHY]))
 
             # Check if a publisher name has been added
-            not_exist = curr.execute("SELECT * FROM publisher WHERE name = ?", (row[P_NAME],)).fetchone() is None
+            not_exist = curr.execute("SELECT * FROM publisher WHERE name = ?", (row[PUB_NAME],)).fetchone() is None
             if not_exist:
-                curr.execute("INSERT INTO publisher VALUES(?,?)", (row[P_NAME], row[P_PHONE]))
+                curr.execute("INSERT INTO publisher VALUES(?,?)", (row[PUB_NAME], row[PUB_PHONE]))
 
             # Check if a book barcode has been added
             not_exist = curr.execute("SELECT * FROM book WHERE barcode = ?", (row[B_BC],)).fetchone() is None
             if not_exist:
                 curr.execute("INSERT INTO book VALUES(?,?,?,?,?)",
-                             (row[B_BC], row[B_TITLE], row[B_YEAR], row[B_AUTHOR], row[P_NAME]))
+                             (row[B_BC], row[B_TITLE], row[B_YEAR], row[B_AUTHOR], row[PUB_NAME]))
 
             # When adding rental records, I assumed there is NO invalid rental record in the original .csv file
             # An invalid rental record can be, for example, a book was checked out when it wasn't returned back
@@ -205,10 +205,30 @@ def replacement_report(book_barcode):
     # phone number.
     conn = sqlite3.connect("library.db")
     curr = conn.cursor()
+    # First we need to make sure that this book has, indeed, been checked out.
+    book_checked_out = len(curr.execute("""
+            SELECT book_id FROM checkout
+            WHERE book_id = ? AND returned = 0
+        """, (book_barcode,)).fetchall()) > 0
+
+    # Retrieve book, patron and publisher information
+    match = curr.execute("""
+            SELECT DISTINCT B.name, B.phone_number, D.name, D.phone
+            FROM checkout as A
+            JOIN patron AS B ON A.patron_id = B.card_number
+            JOIN book AS C ON C.barcode = A.book_id
+            JOIN publisher AS D ON C.publisher = D.name
+            WHERE C.barcode = ?
+        """, (book_barcode, )).fetchall()[0]
+    print(match)
+    if book_checked_out:
+        print("Patron_name: {}; Patron_phone: {}; Publisher_name: {}; Publisher_phone: {}".format(
+            (match[0], match[1], match[2], match[3])
+        ))
+    else:
+        print("Book is not checked out and cannot be lost")
     curr.close()
     conn.close()
-    pass # delete this when you write your code
-
 
 # TODO unfinished
 def inventory():
