@@ -22,6 +22,8 @@ DUE_DATE = 12 # Due date
 RETURNED = 13 # Returned
 
 
+# Return create-table queries from 'create_tables.sql' for the sake for readability
+# Used in "load_data()"
 def create_table_commands():
     # Create tables shown in the ER diagram
     fd = open('create_tables.sql', 'r')
@@ -29,7 +31,12 @@ def create_table_commands():
     fd.close()
     return sql.split(';')
 
-# TODO reload data before submit
+
+# Make reports neat :)
+def print_line_message(msg):
+    print("="*15, msg, "="*15)
+
+
 def load_data():
     # This function should:
     # 1) create a new database file called "library.db"
@@ -96,16 +103,16 @@ def overdue_books(date_str):
                     WHERE A.due_date <= julianday(?) AND A.returned = 0
                 """, (date_str,)).fetchall()
     if len(match) > 0:
-        print("{} Overdue Books Found:".format(len(match)))
+        print_line_message("{} Overdue Books Found:".format(len(match)))
         for row in match:
             print("Patron: {}; Book: {}; Due_date: {}".format(row[0], row[1], row[2]))
+        print_line_message("All {} Overdue Books Above:".format(len(match)))
     else:
         print("There is no book overdue.")
     curr.close()
     conn.close()
 
 
-# TODO efficiency
 def most_popular_books():
     # This function should print out a report of which books are the
     # most popular (checked out most frequently). The library cares about
@@ -113,31 +120,26 @@ def most_popular_books():
     conn = sqlite3.connect("library.db")
     curr = conn.cursor()
 
-    # I assume the requirement for this function is to
-    # give a list of books that have the greatest number of checkouts
+    # As there are duplicate books that have the same name but different barcode,
+    # it makes more sense to count frequencies over book names rather than barcode.
+    # Books with the same title but different authors are considered different books.
     match = curr.execute("""
-                        SELECT DISTINCT title, count FROM
-                            (SELECT B.title, COUNT(A.book_id) as count
-                            FROM checkout AS A
-                            JOIN book AS B ON A.book_id = B.barcode
-                            GROUP BY A.book_id) AS MATCH
-                        WHERE count = (
-                                SELECT MAX(count) FROM 
-                                    (SELECT B.title, COUNT(A.book_id) as count
-                                    FROM checkout AS A
-                                    JOIN book AS B ON A.book_id = B.barcode
-                                    GROUP BY A.book_id)
-                            )
-                        ORDER BY title
+                        SELECT title, C.name, COUNT(title) FROM
+                        checkout AS A
+                        JOIN book AS B ON A.book_id = B.barcode
+                        JOIN author AS C ON C.name = B.author
+                        GROUP BY title, C.name
+                        ORDER BY COUNT(title) DESC, title, C.name
+                        LIMIT 10
                     """).fetchall()
-    print("The most popular book(s) is:")
+    print_line_message("Top 10 popular books")
     for row in match:
-        print("Book: {}; Number_of_checkout: {}".format(row[0], row[1]))
+        print("Book: {}; Author: {}; Number_of_checkout: {}".format(row[0], row[1], row[2]))
+    print_line_message("Top 10 popular books above")
     curr.close()
     conn.close()
 
 
-# TODO print error??
 def note_return(patron_card, book_barcode):
     # This function should update the database to indicate that the patron
     # with the passed card number has returned the book with the given
@@ -146,7 +148,7 @@ def note_return(patron_card, book_barcode):
     conn = sqlite3.connect("library.db")
     curr = conn.cursor()
 
-    # Get the checkout id of unreturned book
+    # Get the checkout-id of the un-returned book
     match = curr.execute("""
                             SELECT id FROM checkout
                             WHERE patron_id = ? AND book_id = ? AND returned = 0
@@ -157,14 +159,14 @@ def note_return(patron_card, book_barcode):
         curr.execute("""
                 UPDATE checkout
                 SET returned = 1
-                WHERE book_id = ?
-            """, (book_barcode, ))
+                WHERE id = ?
+            """, (match[0][0], ))
         conn.commit()
+        print("Book returned successfully!")
     curr.close()
     conn.close()
 
 
-# TODO Other bugs?
 def note_checkout(patron_card, book_barcode, checkout_date):
     # This function should update the database to indicate that a patron
     # has checked out a book on the passed date. The due date of the book
@@ -173,31 +175,32 @@ def note_checkout(patron_card, book_barcode, checkout_date):
     conn = sqlite3.connect("library.db")
     curr = conn.cursor()
 
-    # Check if the given book was returned
-    match = curr.execute("""
+    # Check if the given book ever exists and was returned
+    book_in_inventory = len(curr.execute("""
                             SELECT id FROM checkout
                             WHERE book_id = ? AND returned = 0
-                        """, (book_barcode, )).fetchall()
+                        """, (book_barcode, )).fetchall()) > 0
 
     # Check if exists such a patron
-    patron = curr.execute("""
-                            SELECT * FROM checkout
+    patron_exists = len(curr.execute("""
+                            SELECT * FROM patron
                             WHERE card_number = ?
-                        """, (patron_card, )).fetchall()
-    if len(match) > 0:
-        print("Error: this book is currently checked out")
-    elif len(patron) == 0:
-        print("Error: patron doesn't exist")
+                        """, (patron_card, )).fetchall()) > 0
+
+    if book_in_inventory:
+        print("Error: This book is currently not in the inventory")
+    elif not patron_exists:
+        print("Error: This patron doesn't exist")
     else:
         curr.execute("""
                 INSERT INTO checkout VALUES(null, ?, ?, julianday(?), julianday(?, '+7 days'), 0)
             """, (book_barcode, patron_card, checkout_date, checkout_date))
         conn.commit()
+        print("Successfully checked out!")
     curr.close()
     conn.close()
 
 
-# TODO unfinished
 def replacement_report(book_barcode):
     # This function will be used by the library when a book has been lost
     # by a patron. It should print out: the publisher and publisher's contact
@@ -205,7 +208,8 @@ def replacement_report(book_barcode):
     # phone number.
     conn = sqlite3.connect("library.db")
     curr = conn.cursor()
-    # First we need to make sure that this book has, indeed, been checked out.
+
+    # First we need to make sure that this book exists and has, indeed, been checked out.
     book_checked_out = len(curr.execute("""
             SELECT book_id FROM checkout
             WHERE book_id = ? AND returned = 0
@@ -220,22 +224,43 @@ def replacement_report(book_barcode):
             JOIN publisher AS D ON C.publisher = D.name
             WHERE C.barcode = ?
         """, (book_barcode, )).fetchall()[0]
-    print(match)
+
     if book_checked_out:
-        print("Patron_name: {}; Patron_phone: {}; Publisher_name: {}; Publisher_phone: {}".format(
-            (match[0], match[1], match[2], match[3])
+        print_line_message("Information of the lost book")
+        print("Patron_name: {};\nPatron_phone: {};\nPublisher_name: {};\nPublisher_phone: {};".format(
+            match[0], match[1], match[2], match[3]
         ))
+        print_line_message("Information of the lost book above")
     else:
-        print("Book is not checked out and cannot be lost")
+        print("Error: This book either doesn't exist or wasn't checked out, and hence cannot be lost by a patron")
     curr.close()
     conn.close()
 
-# TODO unfinished
+
 def inventory():
     # This function should report the library's inventory, the books currently
     # available (not checked out).
+    conn = sqlite3.connect("library.db")
+    curr = conn.cursor()
 
-    pass # delete this when you write your code
+    # Retrieve a table of books that are currently checked out and filter books that are not in the table
+    inventory = curr.execute("""
+            SELECT title, barcode FROM book
+            JOIN (
+                SELECT DISTINCT book_id FROM checkout AS A
+                WHERE A.book_id NOT IN (
+                    SELECT book_id FROM checkout AS B
+                    WHERE returned = 0
+                )
+            ) ON book_id = barcode
+            ORDER BY title
+        """).fetchall()
+    print_line_message("All {} books found".format(len(inventory)))
+    for row in inventory:
+        print("Title: {}; Barcode: {}".format(row[0], row[1]))
+    print_line_message("All {} books found above".format(len(inventory)))
+    curr.close()
+    conn.close()
 
 
 # this is the entry point to a Python program, like `public static void main`
