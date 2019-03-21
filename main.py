@@ -5,61 +5,49 @@ import csv
 import os
 import sqlite3
 
+def create_table_commands():
+    # Create tables shown in the ER diagram
+    fd = open('create_tables.sql', 'r')
+    sql = fd.read()
+    fd.close()
+    return sql.split(';')
+
 def load_data():
     # This function should:
     # 1) create a new database file called "library.db"
     # 2) create appropiate tables
     # 3) read the data.csv file and insert data into your database
-
-    # first, we will check to see if library.db already exists.
-    # if it does, we will delete it.
     if os.path.exists("library.db"):
         os.remove("library.db")
-
-    # next, we will create a new SQLite database.
-
-    # create a database connection.
     conn = sqlite3.connect("library.db")
-
-    # create a cursor (this is like a single session)
     curr = conn.cursor()
-
-    # send a pragma command to tell SQLite to check foreign key
-    # constraints (it does not by default :( )
     curr.execute("PRAGMA foreign_keys = ON;")
 
-    # here's an example for how to create a table and insert 2 rows into it
-    # (note the `?` syntax to put values into the query)
-    curr.execute("CREATE TABLE t ( val1 INTEGER, val2 TEXT )")
-    curr.execute("INSERT INTO t VALUES(?, ?)",
-                 (8, "this is a test"))
-    curr.execute("INSERT INTO t VALUES(?, ?)",
-                 (64, "this is another test"))
-
-
-    # commit is like save -- if you don't do it, nothing is written.
+    for command in create_table_commands():
+        curr.execute(command)
     conn.commit()
 
-    # here's an example of how to read data from the database
-    curr.execute("SELECT * FROM t")
-    for row in curr:
-        # each time through the loop, row[0] will be the first column
-        # of the result, and row[1] will be the second.
-        print(row[0], row[1])
+    # Hash set of patron card numbers that have been added to the PATRON table, initialized to an empty set
+    patron_added = set()
+    book_added = set()
 
-    conn.close() # close the DB connection when we are done
-
-    # here's how to read a CSV file.
     with open("data.csv") as f:
         reader = csv.reader(f)
         next(reader) # throw out the header row
-
         for row in reader:
-            # row[0] is the first column of the first row
-            # row[1] is the second column of the first row
-            print(row)
-
-
+            # pfn, pln: First and last name of a patron
+            pfn, pln, pcn, py, pphone = row[0].split()[0], row[0].split()[1], row[1], row[2], row[3]
+            bc, title, year = row[4], row[5], int(row[6])
+            if not pcn in patron_added:
+                patron_added.add(pcn)
+                curr.execute("INSERT INTO patron VALUES(?, ?, ?, ?, ?)",
+                         (pfn, pln, pcn, py, pphone))
+            if not bc in book_added:
+                book_added.add(bc)
+                curr.execute("INSERT INTO book VALUES(?,?,?)",
+                         (bc, title, year))
+        conn.commit()
+    conn.close()
 
 def overdue_books(date_str):
     # This function should take in a string like YYYY-MM-DD and print out
@@ -98,7 +86,6 @@ def replacement_report(book_barcode):
     # phone number. 
     
     pass # delete this when you write your code
-
 
 def inventory():
     # This function should report the library's inventory, the books currently
@@ -147,5 +134,3 @@ if __name__ == "__main__":
             break
         else:
             print("Unrecognized option. Please try again.")
-            
-            

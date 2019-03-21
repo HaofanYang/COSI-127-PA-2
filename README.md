@@ -34,7 +34,6 @@ Haofan Yang (haofanyang@brandeis.edu)
 7. `conn.close()`
 
     And then close the connection.
-    
 
 ## Code Design Doc
 ### Functionality
