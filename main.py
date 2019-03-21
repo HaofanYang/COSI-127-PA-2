@@ -146,7 +146,7 @@ def note_return(patron_card, book_barcode):
     conn = sqlite3.connect("library.db")
     curr = conn.cursor()
 
-    # Get the checkout id of
+    # Get the checkout id of unreturned book
     match = curr.execute("""
                             SELECT id FROM checkout
                             WHERE patron_id = ? AND book_id = ? AND returned = 0
@@ -164,24 +164,53 @@ def note_return(patron_card, book_barcode):
     conn.close()
 
 
+# TODO Other bugs?
 def note_checkout(patron_card, book_barcode, checkout_date):
     # This function should update the database to indicate that a patron
     # has checked out a book on the passed date. The due date of the book
     # should be 7 days after the checkout date. This function should print
     # out an error if the book is currently checked out.
+    conn = sqlite3.connect("library.db")
+    curr = conn.cursor()
 
-    pass # delete this when you write your code
+    # Check if the given book was returned
+    match = curr.execute("""
+                            SELECT id FROM checkout
+                            WHERE book_id = ? AND returned = 0
+                        """, (book_barcode, )).fetchall()
+
+    # Check if exists such a patron
+    patron = curr.execute("""
+                            SELECT * FROM checkout
+                            WHERE card_number = ?
+                        """, (patron_card, )).fetchall()
+    if len(match) > 0:
+        print("Error: this book is currently checked out")
+    elif len(patron) == 0:
+        print("Error: patron doesn't exist")
+    else:
+        curr.execute("""
+                INSERT INTO checkout VALUES(null, ?, ?, julianday(?), julianday(?, '+7 days'), 0)
+            """, (book_barcode, patron_card, checkout_date, checkout_date))
+        conn.commit()
+    curr.close()
+    conn.close()
 
 
+# TODO unfinished
 def replacement_report(book_barcode):
     # This function will be used by the library when a book has been lost
     # by a patron. It should print out: the publisher and publisher's contact
     # information, the patron who had checked out the book, and that patron's
-    # phone number. 
-    
+    # phone number.
+    conn = sqlite3.connect("library.db")
+    curr = conn.cursor()
+    curr.close()
+    conn.close()
     pass # delete this when you write your code
 
 
+# TODO unfinished
 def inventory():
     # This function should report the library's inventory, the books currently
     # available (not checked out).
