@@ -89,16 +89,16 @@ def overdue_books(date_str):
     conn = sqlite3.connect("library.db")
     curr = conn.cursor()
     match = curr.execute("""
-                    SELECT B.name, C.title, A.due_date 
+                    SELECT B.name, C.title, date(A.due_date) 
                     FROM checkout AS A
                     JOIN patron AS B ON B.card_number = A.patron_id
                     JOIN book AS C ON C.barcode = A.book_id
                     WHERE A.due_date <= julianday(?) AND A.returned = 0
-                 """, (date_str,)).fetchall()
+                """, (date_str,)).fetchall()
     if len(match) > 0:
-        print("All overdue books:")
+        print("{} Overdue Books Found:".format(len(match)))
         for row in match:
-            print("Patron: {}, Book: {}, Due_date: {}".format(row[0], row[1], row[2]))
+            print("Patron: {}; Book: {}; Due_date: {}".format(row[0], row[1], row[2]))
     else:
         print("There is no book overdue.")
     curr.close()
@@ -109,7 +109,28 @@ def most_popular_books():
     # This function should print out a report of which books are the
     # most popular (checked out most frequently). The library cares about
     # the books themselves, not who published them.
-
+    conn = sqlite3.connect("library.db")
+    curr = conn.cursor()
+    match = curr.execute("""
+                        SELECT DISTINCT title, count FROM
+                            (SELECT B.title, COUNT(A.book_id) as count
+                            FROM checkout AS A
+                            JOIN book AS B ON A.book_id = B.barcode
+                            GROUP BY A.book_id) AS MATCH
+                        WHERE count = (
+                                SELECT MAX(count) FROM 
+                                    (SELECT B.title, COUNT(A.book_id) as count
+                                    FROM checkout AS A
+                                    JOIN book AS B ON A.book_id = B.barcode
+                                    GROUP BY A.book_id)
+                            )
+                        ORDER BY title
+                    """).fetchall()
+    print("The most popular book(s) is:")
+    for row in match:
+        print("Book: {}; Number_of_checkout: {}".format(row[0], row[1]))
+    curr.close()
+    conn.close()
     pass # delete this when you write your code
 
 
