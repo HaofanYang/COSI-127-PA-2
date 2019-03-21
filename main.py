@@ -29,7 +29,7 @@ def create_table_commands():
     fd.close()
     return sql.split(';')
 
-
+# TODO reload data before submit
 def load_data():
     # This function should:
     # 1) create a new database file called "library.db"
@@ -105,12 +105,16 @@ def overdue_books(date_str):
     conn.close()
 
 
+# TODO efficiency
 def most_popular_books():
     # This function should print out a report of which books are the
     # most popular (checked out most frequently). The library cares about
     # the books themselves, not who published them.
     conn = sqlite3.connect("library.db")
     curr = conn.cursor()
+
+    # I assume the requirement for this function is to
+    # give a list of books that have the greatest number of checkouts
     match = curr.execute("""
                         SELECT DISTINCT title, count FROM
                             (SELECT B.title, COUNT(A.book_id) as count
@@ -131,16 +135,33 @@ def most_popular_books():
         print("Book: {}; Number_of_checkout: {}".format(row[0], row[1]))
     curr.close()
     conn.close()
-    pass # delete this when you write your code
 
 
+# TODO print error??
 def note_return(patron_card, book_barcode):
     # This function should update the database to indicate that the patron
     # with the passed card number has returned the book with the given
     # barcode. This function should print out an error if that patron didn't
     # have the book currently checked out.
+    conn = sqlite3.connect("library.db")
+    curr = conn.cursor()
 
-    pass # delete this when you write your code
+    # Get the checkout id of
+    match = curr.execute("""
+                            SELECT id FROM checkout
+                            WHERE patron_id = ? AND book_id = ? AND returned = 0
+                        """, (patron_card, book_barcode)).fetchall()
+    if len(match) == 0:
+        print("Error: this patron does not have the book currently checked out")
+    else:
+        curr.execute("""
+                UPDATE checkout
+                SET returned = 1
+                WHERE book_id = ?
+            """, (book_barcode, ))
+        conn.commit()
+    curr.close()
+    conn.close()
 
 
 def note_checkout(patron_card, book_barcode, checkout_date):
